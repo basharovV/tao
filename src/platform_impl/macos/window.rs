@@ -1264,22 +1264,32 @@ impl UnownedWindow {
       if fullscreen {
         return;
       }
-
-      let new_mask = {
-        let mut new_mask = if decorations {
-          NSWindowStyleMask::NSClosableWindowMask
-            | NSWindowStyleMask::NSMiniaturizableWindowMask
-            | NSWindowStyleMask::NSResizableWindowMask
-            | NSWindowStyleMask::NSTitledWindowMask
-        } else {
-          NSWindowStyleMask::NSBorderlessWindowMask | NSWindowStyleMask::NSResizableWindowMask
-        };
-        if !resizable {
-          new_mask &= !NSWindowStyleMask::NSResizableWindowMask;
-        }
-        new_mask
-      };
-      self.set_style_mask_async(new_mask);
+      unsafe {
+        util::toggle_style_mask(
+          *self.ns_window,
+          *self.ns_view,
+          NSWindowStyleMask::NSClosableWindowMask,
+          decorations,
+        );
+        util::toggle_style_mask(
+          *self.ns_window,
+          *self.ns_view,
+          NSWindowStyleMask::NSMiniaturizableWindowMask,
+          decorations,
+        );
+        util::toggle_style_mask(
+          *self.ns_window,
+          *self.ns_view,
+          NSWindowStyleMask::NSResizableWindowMask,
+          if !resizable { false } else { decorations },
+        );
+        util::toggle_style_mask(
+          *self.ns_window,
+          *self.ns_view,
+          NSWindowStyleMask::NSBorderlessWindowMask,
+          !decorations,
+        );
+      }
     }
   }
 

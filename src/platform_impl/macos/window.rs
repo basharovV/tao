@@ -1249,47 +1249,33 @@ impl UnownedWindow {
     if decorations != self.decorations.load(Ordering::Acquire) {
       self.decorations.store(decorations, Ordering::Release);
 
-      let (fullscreen, resizable) = {
-        trace!("Locked shared state in `set_decorations`");
-        let shared_state_lock = self.shared_state.lock().unwrap();
-        trace!("Unlocked shared state in `set_decorations`");
-        (
-          shared_state_lock.fullscreen.is_some(),
-          shared_state_lock.resizable,
-        )
-      };
+      trace!("Locked shared state in `set_decorations`");
+      let shared_state_lock = self.shared_state.lock().unwrap();
+      trace!("Unlocked shared state in `set_decorations`");
 
       // If we're in fullscreen mode, we wait to apply decoration changes
       // until we're in `window_did_exit_fullscreen`.
-      if fullscreen {
+      if shared_state_lock.fullscreen.is_some() {
         return;
       }
-      unsafe {
-        util::toggle_style_mask(
-          *self.ns_window,
-          *self.ns_view,
-          NSWindowStyleMask::NSClosableWindowMask,
-          decorations,
-        );
-        util::toggle_style_mask(
-          *self.ns_window,
-          *self.ns_view,
-          NSWindowStyleMask::NSMiniaturizableWindowMask,
-          decorations,
-        );
-        util::toggle_style_mask(
-          *self.ns_window,
-          *self.ns_view,
-          NSWindowStyleMask::NSResizableWindowMask,
-          if !resizable { false } else { decorations },
-        );
-        util::toggle_style_mask(
-          *self.ns_window,
-          *self.ns_view,
-          NSWindowStyleMask::NSBorderlessWindowMask,
-          !decorations,
-        );
-      }
+      unsafe { 
+        let current_style_mask = shared_state_lock.saved_style.unwrap_or(self.ns_window.styleMask());
+
+        let window_controls_mask = NSWindowStyleMask::NSClosableWindowMask
+          | NSWindowStyleMask::NSMiniaturizableWindowMask
+          | NSWindowStyleMask::NSResizableWindowMask;
+
+        let mut new_style_mask = if decorations {
+          current_style_mask | window_controls_mask
+        } else {
+          current_style_mask & !window_controls_mask
+        };
+
+        if !shared_state_lock.resizable {
+          new_style_mask &= !NSWindowStyleMask::NSResizableWindowMask;
+        }
+        self.set_style_mask_async(new_style_mask);      
+      } 
     }
   }
 

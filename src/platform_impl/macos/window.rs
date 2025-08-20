@@ -1338,37 +1338,33 @@ impl UnownedWindow {
     if decorations != self.decorations.load(Ordering::Acquire) {
       self.decorations.store(decorations, Ordering::Release);
 
-      let (fullscreen, resizable) = {
-        trace!("Locked shared state in `set_decorations`");
-        let shared_state_lock = self.shared_state.lock().unwrap();
-        trace!("Unlocked shared state in `set_decorations`");
-        (
-          shared_state_lock.fullscreen.is_some(),
-          shared_state_lock.resizable,
-        )
-      };
+      trace!("Locked shared state in `set_decorations`");
+      let shared_state_lock = self.shared_state.lock().unwrap();
+      trace!("Unlocked shared state in `set_decorations`");
 
       // If we're in fullscreen mode, we wait to apply decoration changes
       // until we're in `window_did_exit_fullscreen`.
-      if fullscreen {
+      if shared_state_lock.fullscreen.is_some() {
         return;
       }
+      unsafe { 
+        let current_style_mask = shared_state_lock.saved_style.unwrap_or(self.ns_window.styleMask());
 
-      let new_mask = {
-        let mut new_mask = if decorations {
-          NSWindowStyleMask::Closable
-            | NSWindowStyleMask::Miniaturizable
-            | NSWindowStyleMask::Resizable
-            | NSWindowStyleMask::Titled
+        let window_controls_mask = NSWindowStyleMask::Closable
+          | NSWindowStyleMask::Miniaturizable
+          | NSWindowStyleMask::Resizable;
+
+        let mut new_style_mask = if decorations {
+          current_style_mask | window_controls_mask
         } else {
-          NSWindowStyleMask::Borderless | NSWindowStyleMask::Resizable
+          current_style_mask & !window_controls_mask
         };
-        if !resizable {
-          new_mask &= !NSWindowStyleMask::Resizable;
+
+        if !shared_state_lock.resizable {
+          new_style_mask &= !NSWindowStyleMask::Resizable;
         }
-        new_mask
-      };
-      self.set_style_mask_async(new_mask);
+        self.set_style_mask_async(new_style_mask);      
+      } 
     }
   }
 
